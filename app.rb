@@ -419,5 +419,17 @@ module Isuconp
 
       redirect '/admin/banned', 302
     end
+
+    get '/save_img' do
+      save_imgs
+      return 403
+    end
+
+    def save_imgs
+      (1..10023).each do |id|
+        post = db.prepare('SELECT id, imgdata FROM `posts` WHERE `id` = ?').execute(id.to_i).first
+        File.write("#{public_folder}/#{post[:id]}.#{params[:ext]}", post[:imgdata])
+      end
+    end
   end
 end
