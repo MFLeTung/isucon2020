@@ -139,13 +139,15 @@ module Isuconp
           ext = ".gif"
         end
 
+        file_path = "#{File.expand_path('../../public', __FILE__)}/#{post[:id]}#{ext}"
+        return "/local_image/#{post[:id]}#{ext}" if File.exist?(file_path)
+
         "/image/#{post[:id]}#{ext}"
       end
     end
 
     get '/initialize' do
-      save_imgs
-      # db_initialize
+      db_initialize
       return 200
     end
 
@@ -344,6 +346,16 @@ module Isuconp
       end
 
       post = db.prepare('SELECT * FROM `posts` WHERE `id` = ?').execute(params[:id].to_i).first
+
+      ext = ""
+      if post[:mime] == "image/jpeg"
+        ext = ".jpg"
+      elsif post[:mime] == "image/png"
+        ext = ".png"
+      elsif post[:mime] == "image/gif"
+        ext = ".gif"
+      end
+      File.write("#{File.expand_path('../../public', __FILE__)}/#{post[:id]}#{ext}", post[:imgdata])
 
       if (params[:ext] == "jpg" && post[:mime] == "image/jpeg") ||
           (params[:ext] == "png" && post[:mime] == "image/png") ||
