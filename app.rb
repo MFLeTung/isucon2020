@@ -423,8 +423,16 @@ module Isuconp
 
     def save_imgs
       (1..10023).each do |id|
-        post = db.prepare('SELECT id, imgdata FROM `posts` WHERE `id` = ?').execute(id.to_i).first
-        File.write("#{public_folder}/#{post[:id]}.#{params[:ext]}", post[:imgdata])
+        post = db.prepare('SELECT id, imgdata, mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
+        ext = ""
+        if post[:mime] == "image/jpeg"
+          ext = ".jpg"
+        elsif post[:mime] == "image/png"
+          ext = ".png"
+        elsif post[:mime] == "image/gif"
+          ext = ".gif"
+        end
+        File.write("#{File.expand_path('../../public', __FILE__)}/#{post[:id]}#{ext}", post[:imgdata])
       end
     end
   end
