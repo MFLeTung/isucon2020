@@ -99,10 +99,12 @@ module Isuconp
 
       def make_posts(results, all_comments: false)
         posts = []
+        result_ids = results.map(&:id)
+        query = 'SELECT post_id, COUNT(*) AS count FROM comments WHERE post_id IN (?) GROUP BY 1'
+        count_hash = db.prepare(query).execute(result_ids).each_with_object({}) {|comment, hash| hash[comment[:post_id] = comment[:count]] }
+
         results.to_a.each do |post|
-          post[:comment_count] = db.prepare('SELECT COUNT(*) AS count FROM comments WHERE post_id = ?').execute(
-            post[:id]
-          ).first[:count]
+          post[:comment_count] = count_hash[:post_id]
 
           query = 'SELECT * FROM comments WHERE post_id = ? ORDER BY created_at DESC'
           unless all_comments
