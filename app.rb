@@ -122,8 +122,7 @@ module Isuconp
             post[:user_id]
           ).first
 
-          posts.push(post) if post[:user][:del_flg] == 0
-          break if posts.length >= POSTS_PER_PAGE
+          posts.push(post)
         end
 
         posts
@@ -226,7 +225,7 @@ module Isuconp
     get '/' do
       me = get_session_user()
 
-      results = db.query('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` ORDER BY `created_at` DESC')
+      results = db.query('SELECT p.id, p.user_id, p.body, p.created_at, p.mime FROM posts p INNER JOIN users u ON p.user_id = u.id AND u.del_flg = 0 ORDER BY p.created_at DESC LIMIT 20')
       posts = make_posts(results)
 
       erb :index, layout: :layout, locals: { posts: posts, me: me }
@@ -241,7 +240,7 @@ module Isuconp
         return 404
       end
 
-      results = db.prepare('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC').execute(
+      results = db.prepare('SELECT p.id, p.user_id, p.body, p.mime, p.created_at FROM posts p INNER JOIN users u ON p.user_id = u.id AND u.del_flg = 0 WHERE user_id = ? ORDER BY p.created_at DESC LIMIT 20').execute(
         user[:id]
       )
       posts = make_posts(results)
@@ -270,7 +269,7 @@ module Isuconp
 
     get '/posts' do
       max_created_at = params['max_created_at']
-      results = db.prepare('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC').execute(
+      results = db.prepare('SELECT p.id, p.user_id, p.body, p.mime, p.created_at FROM posts p INNER JOIN users u ON p.user_id = u.id AND u.del_flg = 0 WHERE p.created_at <= ? ORDER BY p.created_at DESC LIMIT 20').execute(
         max_created_at.nil? ? nil : Time.iso8601(max_created_at).localtime
       )
       posts = make_posts(results)
@@ -279,7 +278,7 @@ module Isuconp
     end
 
     get '/posts/:id' do
-      results = db.prepare('SELECT * FROM `posts` WHERE `id` = ?').execute(
+      results = db.prepare('SELECT p.* FROM posts p INNER JOIN users u ON p.user_id = u.id AND u.del_flg = 0 WHERE id = ?').execute(
         params[:id]
       )
       posts = make_posts(results, all_comments: true)
