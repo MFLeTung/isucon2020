@@ -111,16 +111,15 @@ module Isuconp
           comments = db.prepare(query).execute(
             post[:id]
           ).to_a
+          user = db.prepare('SELECT * FROM users WHERE id = ?').execute(
+            comment[:user_id]
+          ).first
           comments.each do |comment|
-            comment[:user] = db.prepare('SELECT * FROM users WHERE id = ?').execute(
-              comment[:user_id]
-            ).first
+            comment[:user] = user
           end
           post[:comments] = comments.reverse
 
-          post[:user] = db.prepare('SELECT * FROM users WHERE id = ?').execute(
-            post[:user_id]
-          ).first
+          post[:user] = user
 
           posts.push(post)
         end
