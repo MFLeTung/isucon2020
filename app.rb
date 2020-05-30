@@ -89,7 +89,7 @@ module Isuconp
 
       def get_session_user()
         if session[:user]
-          db.prepare('SELECT * FROM `users` WHERE `id` = ?').execute(
+          db.prepare('SELECT * FROM users WHERE id = ?').execute(
             session[:user][:id]
           ).first
         else
@@ -100,11 +100,11 @@ module Isuconp
       def make_posts(results, all_comments: false)
         posts = []
         results.to_a.each do |post|
-          post[:comment_count] = db.prepare('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?').execute(
+          post[:comment_count] = db.prepare('SELECT COUNT(*) AS count FROM comments WHERE post_id = ?').execute(
             post[:id]
           ).first[:count]
 
-          query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC'
+          query = 'SELECT * FROM comments WHERE post_id = ? ORDER BY created_at DESC'
           unless all_comments
             query += ' LIMIT 3'
           end
@@ -112,13 +112,13 @@ module Isuconp
             post[:id]
           ).to_a
           comments.each do |comment|
-            comment[:user] = db.prepare('SELECT * FROM `users` WHERE `id` = ?').execute(
+            comment[:user] = db.prepare('SELECT * FROM users WHERE id = ?').execute(
               comment[:user_id]
             ).first
           end
           post[:comments] = comments.reverse
 
-          post[:user] = db.prepare('SELECT * FROM `users` WHERE `id` = ?').execute(
+          post[:user] = db.prepare('SELECT * FROM users WHERE id = ?').execute(
             post[:user_id]
           ).first
 
@@ -190,14 +190,14 @@ module Isuconp
         return
       end
 
-      user = db.prepare('SELECT 1 FROM users WHERE `account_name` = ?').execute(account_name).first
+      user = db.prepare('SELECT 1 FROM users WHERE account_name = ?').execute(account_name).first
       if user
         flash[:notice] = 'アカウント名がすでに使われています'
         redirect '/register', 302
         return
       end
 
-      query = 'INSERT INTO `users` (`account_name`, `passhash`) VALUES (?,?)'
+      query = 'INSERT INTO users (account_name, passhash) VALUES (?,?)'
       db.prepare(query).execute(
         account_name,
         calculate_passhash(account_name, password)
@@ -225,7 +225,7 @@ module Isuconp
     end
 
     get '/@:account_name' do
-      user = db.prepare('SELECT * FROM `users` WHERE `account_name` = ? AND `del_flg` = 0').execute(
+      user = db.prepare('SELECT * FROM users WHERE account_name = ? AND del_flg = 0').execute(
         params[:account_name]
       ).first
 
@@ -238,11 +238,11 @@ module Isuconp
       )
       posts = make_posts(results)
 
-      comment_count = db.prepare('SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?').execute(
+      comment_count = db.prepare('SELECT COUNT(*) AS count FROM comments WHERE user_id = ?').execute(
         user[:id]
       ).first[:count]
 
-      post_ids = db.prepare('SELECT `id` FROM `posts` WHERE `user_id` = ?').execute(
+      post_ids = db.prepare('SELECT id FROM posts WHERE user_id = ?').execute(
         user[:id]
       ).map{|post| post[:id]}
       post_count = post_ids.length
@@ -250,7 +250,7 @@ module Isuconp
       commented_count = 0
       if post_count > 0
         placeholder = (['?'] * post_ids.length).join(",")
-        commented_count = db.prepare("SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN (#{placeholder})").execute(
+        commented_count = db.prepare("SELECT COUNT(*) AS count FROM comments WHERE post_id IN (#{placeholder})").execute(
           *post_ids
         ).first[:count]
       end
@@ -316,7 +316,7 @@ module Isuconp
         end
 
         params['file'][:tempfile].rewind
-        query = 'INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,"",?)'
+        query = 'INSERT INTO posts (user_id, mime, imgdata, body) VALUES (?,?,"",?)'
         db.prepare(query).execute(
           me[:id],
           mime,
@@ -341,7 +341,7 @@ module Isuconp
         return ""
       end
 
-      post = db.prepare('SELECT * FROM `posts` WHERE `id` = ?').execute(params[:id].to_i).first
+      post = db.prepare('SELECT * FROM posts WHERE id = ?').execute(params[:id].to_i).first
 
       ext = get_ext_mime(post[:mime])
       file_path = get_img_local_path(post[:id].to_i, ext)
@@ -373,7 +373,7 @@ module Isuconp
       end
       post_id = params['post_id']
 
-      query = 'INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)'
+      query = 'INSERT INTO comments (post_id, user_id, comment) VALUES (?,?,?)'
       db.prepare(query).execute(
         post_id,
         me[:id],
@@ -394,7 +394,7 @@ module Isuconp
         return 403
       end
 
-      users = db.query('SELECT * FROM `users` WHERE `authority` = 0 AND `del_flg` = 0 ORDER BY `created_at` DESC')
+      users = db.query('SELECT * FROM users WHERE authority = 0 AND del_flg = 0 ORDER BY created_at DESC')
 
       erb :banned, layout: :layout, locals: { users: users, me: me }
     end
@@ -415,7 +415,7 @@ module Isuconp
       end
 
       uids = params['uid'].map(&:to_i).join(",")
-      query = 'UPDATE `users` SET `del_flg` = 1 WHERE `id` IN (?)'
+      query = 'UPDATE users SET del_flg = 1 WHERE id IN (?)'
       db.prepare(query).execute(uids)
 
       redirect '/admin/banned', 302
@@ -429,13 +429,13 @@ module Isuconp
 
     def save_imgs(min, max)
       (min..max).each do |id|
-        post = db.prepare('SELECT mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
+        post = db.prepare('SELECT mime FROM posts WHERE id = ?').execute(id.to_i).first
         ext = get_ext_mime(post[:mime])
 
         file_path = get_img_local_path(id.to_i, ext)
         next if File.exist?(file_path)
 
-        post = db.prepare('SELECT id, imgdata, mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
+        post = db.prepare('SELECT id, imgdata, mime FROM posts WHERE id = ?').execute(id.to_i).first
         File.write(file_path, post[:imgdata])
       end
     end
