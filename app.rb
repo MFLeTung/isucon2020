@@ -270,7 +270,7 @@ module Isuconp
     end
 
     get '/posts/:id' do
-      results = db.prepare('SELECT p.* FROM posts p INNER JOIN users u ON p.user_id = u.id AND u.del_flg = 0 WHERE id = ?').execute(
+      results = db.prepare('SELECT p.* FROM posts p INNER JOIN users u ON p.user_id = u.id AND u.del_flg = 0 WHERE p.id = ?').execute(
         params[:id]
       )
       posts = make_posts(results, all_comments: true)
