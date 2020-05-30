@@ -144,7 +144,8 @@ module Isuconp
     end
 
     get '/initialize' do
-      db_initialize
+      save_imgs
+      # db_initialize
       return 200
     end
 
@@ -418,11 +419,6 @@ module Isuconp
       end
 
       redirect '/admin/banned', 302
-    end
-
-    get '/save_img' do
-      save_imgs
-      return 403
     end
 
     def save_imgs
