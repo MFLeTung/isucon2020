@@ -139,7 +139,7 @@ module Isuconp
           ext = ".gif"
         end
 
-        file_path = "#{File.expand_path('../../public', __FILE__)}/#{post[:id]}#{ext}"
+        file_path = "#{File.expand_path('../../public/local_image', __FILE__)}/#{post[:id]}#{ext}"
         return "/local_image/#{post[:id]}#{ext}" if File.exist?(file_path)
 
         "/image/#{post[:id]}#{ext}"
@@ -355,7 +355,7 @@ module Isuconp
       elsif post[:mime] == "image/gif"
         ext = ".gif"
       end
-      File.write("#{File.expand_path('../../public', __FILE__)}/#{post[:id]}#{ext}", post[:imgdata])
+      File.write("#{File.expand_path('../../public/local_image', __FILE__)}/#{post[:id]}#{ext}", post[:imgdata])
 
       if (params[:ext] == "jpg" && post[:mime] == "image/jpeg") ||
           (params[:ext] == "png" && post[:mime] == "image/png") ||
