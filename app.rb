@@ -411,11 +411,9 @@ module Isuconp
         return 422
       end
 
-      query = 'UPDATE `users` SET `del_flg` = ? WHERE `id` = ?'
-
-      params['uid'].each do |id|
-        db.prepare(query).execute(1, id.to_i)
-      end
+      uids = params['uid'].map(&:to_i).join(",")
+      query = 'UPDATE `users` SET `del_flg` = 1 WHERE `id` IN (?)'
+      db.prepare(query).execute(uids)
 
       redirect '/admin/banned', 302
     end
