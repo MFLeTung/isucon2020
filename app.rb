@@ -112,7 +112,7 @@ module Isuconp
             post[:id]
           ).to_a
           user = db.prepare('SELECT * FROM users WHERE id = ?').execute(
-            comment[:user_id]
+            post[:user_id]
           ).first
           comments.each do |comment|
             comment[:user] = user
