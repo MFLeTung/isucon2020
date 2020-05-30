@@ -129,16 +129,9 @@ module Isuconp
       end
 
       def image_url(post)
-        ext = ""
-        if post[:mime] == "image/jpeg"
-          ext = ".jpg"
-        elsif post[:mime] == "image/png"
-          ext = ".png"
-        elsif post[:mime] == "image/gif"
-          ext = ".gif"
-        end
+        ext = get_ext_mime(post[:mime])
 
-        file_path = "#{File.expand_path('../../public/local_image', __FILE__)}/#{post[:id]}#{ext}"
+        file_path = get_img_local_path(post[:id].to_i, ext)
         return "/local_image/#{post[:id]}#{ext}" if File.exist?(file_path)
 
         "/image/#{post[:id]}#{ext}"
@@ -323,14 +316,18 @@ module Isuconp
         end
 
         params['file'][:tempfile].rewind
-        query = 'INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?)'
+        query = 'INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,"",?)'
         db.prepare(query).execute(
           me[:id],
           mime,
-          params["file"][:tempfile].read,
           params["body"],
         )
         pid = db.last_id
+
+        ext = get_ext_mime(mime)
+        file_path = get_img_local_path(pid, ext)
+
+        File.write(file_path, params["file"][:tempfile].read)
 
         redirect "/posts/#{pid}", 302
       else
@@ -346,15 +343,9 @@ module Isuconp
 
       post = db.prepare('SELECT * FROM `posts` WHERE `id` = ?').execute(params[:id].to_i).first
 
-      ext = ""
-      if post[:mime] == "image/jpeg"
-        ext = ".jpg"
-      elsif post[:mime] == "image/png"
-        ext = ".png"
-      elsif post[:mime] == "image/gif"
-        ext = ".gif"
-      end
-      File.write("#{File.expand_path('../../public/local_image', __FILE__)}/#{post[:id]}#{ext}", post[:imgdata])
+      ext = get_ext_mime(post[:mime])
+      file_path = get_img_local_path(post[:id].to_i, ext)
+      File.write(file_path, post[:imgdata])
 
       if (params[:ext] == "jpg" && post[:mime] == "image/jpeg") ||
           (params[:ext] == "png" && post[:mime] == "image/png") ||
@@ -439,20 +430,31 @@ module Isuconp
     def save_imgs(min, max)
       (min..max).each do |id|
         post = db.prepare('SELECT mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
-        ext = ""
-        if post[:mime] == "image/jpeg"
-          ext = ".jpg"
-        elsif post[:mime] == "image/png"
-          ext = ".png"
-        elsif post[:mime] == "image/gif"
-          ext = ".gif"
-        end
-        file_path = "#{File.expand_path('../../public/local_image', __FILE__)}/#{id.to_i}#{ext}"
+        ext = get_ext_mime(post[:mime])
+
+        file_path = get_img_local_path(id.to_i, ext)
         next if File.exist?(file_path)
 
         post = db.prepare('SELECT id, imgdata, mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
         File.write(file_path, post[:imgdata])
       end
+    end
+
+    def get_ext_mime(mime)
+      ext = ""
+      if mime == "image/jpeg"
+        ext = ".jpg"
+      elsif mime == "image/png"
+        ext = ".png"
+      elsif mime == "image/gif"
+        ext = ".gif"
+      end
+
+      ext
+    end
+
+    def get_img_local_path(id, ext)
+      "#{File.expand_path('../../public/local_image', __FILE__)}/#{id.to_i}#{ext}"
     end
   end
 end
