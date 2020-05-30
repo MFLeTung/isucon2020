@@ -433,9 +433,15 @@ module Isuconp
       redirect '/admin/banned', 302
     end
 
-    def save_imgs
-      (1..10023).each do |id|
-        post = db.prepare('SELECT id, imgdata, mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
+    get '/save_imgs/:min/:max' do
+      save_imgs(params[:min].to_i, params[:max].to_i)
+
+      return 200
+    end
+
+    def save_imgs(min, max)
+      (min..max).each do |id|
+        post = db.prepare('SELECT mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
         ext = ""
         if post[:mime] == "image/jpeg"
           ext = ".jpg"
@@ -444,7 +450,11 @@ module Isuconp
         elsif post[:mime] == "image/gif"
           ext = ".gif"
         end
-        File.write("#{File.expand_path('../../public', __FILE__)}/#{post[:id]}#{ext}", post[:imgdata])
+        file_path = "#{File.expand_path('../../public/local_image', __FILE__)}/#{id.to_i}#{ext}"
+        next if File.exist?(file_path)
+
+        post = db.prepare('SELECT id, imgdata, mime FROM `posts` WHERE `id` = ?').execute(id.to_i).first
+        File.write(file_path, post[:imgdata])
       end
     end
   end
