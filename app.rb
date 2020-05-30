@@ -2,6 +2,8 @@ require 'sinatra/base'
 require 'mysql2'
 require 'rack-flash'
 require 'shellwords'
+require 'active_record'
+require_relative 'models/init'
 
 module Isuconp
   class App < Sinatra::Base
@@ -12,6 +14,16 @@ module Isuconp
     UPLOAD_LIMIT = 10 * 1024 * 1024 # 10mb
 
     POSTS_PER_PAGE = 20
+
+    ActiveRecord::Base.default_timezone = :local
+    ActiveRecord::Base.establish_connection(
+      adapter: :mysql2,
+      host: ENV['ISUCONP_DB_HOST'] || 'localhost',
+      port: ENV['ISUCONP_DB_PORT'] && ENV['ISUCONP_DB_PORT'].to_i,
+      username: ENV['ISUCONP_DB_USER'] || 'root',
+      password: ENV['ISUCONP_DB_PASSWORD'],
+      database: ENV['ISUCONP_DB_NAME'] || 'isuconp',
+    )
 
     helpers do
       def config
@@ -55,9 +67,9 @@ module Isuconp
       end
 
       def try_login(account_name, password)
-        user = db.prepare('SELECT * FROM users WHERE account_name = ? AND del_flg = 0').execute(account_name).first
+        user = User.find_by(account_name: account_name, del_flg: 0)
 
-        if user && calculate_passhash(user[:account_name], password) == user[:passhash]
+        if user && calculate_passhash(user.account_name, password) == user.passhash
           return user
         elsif user
           return nil
@@ -88,41 +100,26 @@ module Isuconp
       end
 
       def get_session_user()
-        if session[:user]
-          db.prepare('SELECT * FROM `users` WHERE `id` = ?').execute(
-            session[:user][:id]
-          ).first
-        else
-          nil
-        end
+        session[:user] ? User.find(session[:user][:id]) : nil
       end
 
       def make_posts(results, all_comments: false)
+        # TODO: N+1 解体あとで
         posts = []
         results.to_a.each do |post|
-          post[:comment_count] = db.prepare('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?').execute(
-            post[:id]
-          ).first[:count]
+          post[:comment_count] = Comment.where(post_id: post.id).count
 
-          query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC'
-          unless all_comments
-            query += ' LIMIT 3'
-          end
-          comments = db.prepare(query).execute(
-            post[:id]
-          ).to_a
-          comments.each do |comment|
-            comment[:user] = db.prepare('SELECT * FROM `users` WHERE `id` = ?').execute(
-              comment[:user_id]
-            ).first
+          comments = all_comments ? Comments.where(post_id: post.id).order(created_at: "DESC") : Comments.where(post_id: post[:id]).order(created_at: "DESC").limit(3)
+
+          comments = comments.each do |comment|
+            comment_hash = comment.attributes
+            comment_hash[:user] = User.find_by(comment.user_id)
           end
           post[:comments] = comments.reverse
 
-          post[:user] = db.prepare('SELECT * FROM `users` WHERE `id` = ?').execute(
-            post[:user_id]
-          ).first
+          post[:user] = User.find(post.user_id)
 
-          posts.push(post) if post[:user][:del_flg] == 0
+          posts.push(post) if post.user.del_flg == 0
           break if posts.length >= POSTS_PER_PAGE
         end
 
@@ -131,15 +128,15 @@ module Isuconp
 
       def image_url(post)
         ext = ""
-        if post[:mime] == "image/jpeg"
+        if post.mime == "image/jpeg"
           ext = ".jpg"
-        elsif post[:mime] == "image/png"
+        elsif post.mime == "image/png"
           ext = ".png"
-        elsif post[:mime] == "image/gif"
+        elsif post.mime == "image/gif"
           ext = ".gif"
         end
 
-        "/image/#{post[:id]}#{ext}"
+        "/image/#{post.id}#{ext}"
       end
     end
 
@@ -163,7 +160,7 @@ module Isuconp
       user = try_login(params['account_name'], params['password'])
       if user
         session[:user] = {
-          id: user[:id]
+          id: user.id
         }
         session[:csrf_token] = SecureRandom.hex(16)
         redirect '/', 302
@@ -223,41 +220,33 @@ module Isuconp
     get '/' do
       me = get_session_user()
 
-      results = db.query('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` ORDER BY `created_at` DESC')
+      results = Post.all.order(:created_at)
+
+
       posts = make_posts(results)
 
       erb :index, layout: :layout, locals: { posts: posts, me: me }
     end
 
     get '/@:account_name' do
-      user = db.prepare('SELECT * FROM `users` WHERE `account_name` = ? AND `del_flg` = 0').execute(
-        params[:account_name]
-      ).first
+      user = User.find_by(account_name: account_name, del_flg: 0)
 
       if user.nil?
         return 404
       end
 
-      results = db.prepare('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC').execute(
-        user[:id]
-      )
+      results = Post.where(user_id: user.id).order(:created_at)
+
       posts = make_posts(results)
 
-      comment_count = db.prepare('SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?').execute(
-        user[:id]
-      ).first[:count]
+      comment_count = Comment.where(user_id: user.id).count
 
-      post_ids = db.prepare('SELECT `id` FROM `posts` WHERE `user_id` = ?').execute(
-        user[:id]
-      ).map{|post| post[:id]}
+      post_ids = Post.where(user_id: user.id).map(&:id)
       post_count = post_ids.length
 
       commented_count = 0
       if post_count > 0
-        placeholder = (['?'] * post_ids.length).join(",")
-        commented_count = db.prepare("SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN (#{placeholder})").execute(
-          *post_ids
-        ).first[:count]
+        commented_count = Comment.where(post_id: post_ids).count
       end
 
       me = get_session_user()
@@ -267,18 +256,14 @@ module Isuconp
 
     get '/posts' do
       max_created_at = params['max_created_at']
-      results = db.prepare('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= ? ORDER BY `created_at` DESC').execute(
-        max_created_at.nil? ? nil : Time.iso8601(max_created_at).localtime
-      )
+      results = Posts.where("created_at <= ?", max_created_at.nil? ? nil : Time.iso8601(max_created_at).localtime).order(created_at: "DESC")
       posts = make_posts(results)
 
       erb :posts, layout: false, locals: { posts: posts }
     end
 
     get '/posts/:id' do
-      results = db.prepare('SELECT * FROM `posts` WHERE `id` = ?').execute(
-        params[:id]
-      )
+      results = Post.find_by(param[:id])
       posts = make_posts(results, all_comments: true)
 
       return 404 if posts.length == 0
@@ -321,14 +306,14 @@ module Isuconp
         end
 
         params['file'][:tempfile].rewind
-        query = 'INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?)'
-        db.prepare(query).execute(
-          me[:id],
-          mime,
-          params["file"][:tempfile].read,
-          params["body"],
+
+        post = Post.save(
+          user_id: me.id,
+          mime: mime,
+          imgdata: params["file"][:tempfile].read,
+          body: params["body"]
         )
-        pid = db.last_id
+        pid = post.id
 
         redirect "/posts/#{pid}", 302
       else
@@ -342,13 +327,13 @@ module Isuconp
         return ""
       end
 
-      post = db.prepare('SELECT * FROM `posts` WHERE `id` = ?').execute(params[:id].to_i).first
+      post = Post.find(params[:id].to_i)
 
-      if (params[:ext] == "jpg" && post[:mime] == "image/jpeg") ||
-          (params[:ext] == "png" && post[:mime] == "image/png") ||
-          (params[:ext] == "gif" && post[:mime] == "image/gif")
-        headers['Content-Type'] = post[:mime]
-        return post[:imgdata]
+      if (params[:ext] == "jpg" && post.mime == "image/jpeg") ||
+          (params[:ext] == "png" && post.mime == "image/png") ||
+          (params[:ext] == "gif" && post.mime == "image/gif")
+        headers['Content-Type'] = post.mime
+        return post.imgdata
       end
 
       return 404
@@ -370,12 +355,11 @@ module Isuconp
       end
       post_id = params['post_id']
 
-      query = 'INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)'
-      db.prepare(query).execute(
-        post_id,
-        me[:id],
-        params['comment']
-      )
+      post_id = Comment.save(
+        post_id: post_id,
+        user_id: me.id,
+        comment: params['comment']
+      ).id
 
       redirect "/posts/#{post_id}", 302
     end
@@ -387,11 +371,11 @@ module Isuconp
         redirect '/login', 302
       end
 
-      if me[:authority] == 0
+      if me.authority == 0
         return 403
       end
 
-      users = db.query('SELECT * FROM `users` WHERE `authority` = 0 AND `del_flg` = 0 ORDER BY `created_at` DESC')
+      users = User.where(authority: 0, del_flg: 0).order(created_at: "DESC")
 
       erb :banned, layout: :layout, locals: { users: users, me: me }
     end
@@ -403,7 +387,7 @@ module Isuconp
         redirect '/', 302
       end
 
-      if me[:authority] == 0
+      if me.authority == 0
         return 403
       end
 
@@ -411,11 +395,8 @@ module Isuconp
         return 422
       end
 
-      query = 'UPDATE `users` SET `del_flg` = ? WHERE `id` = ?'
-
-      params['uid'].each do |id|
-        db.prepare(query).execute(1, id.to_i)
-      end
+      users = User.where(id: params[:uid].map(&:to_i))
+      users.update_all(del_flg: 1)
 
       redirect '/admin/banned', 302
     end

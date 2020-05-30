@@ -6,5 +6,6 @@ gem "sinatra-contrib"
 gem "memcache-client"
 gem "foreman"
 gem "unicorn"
-gem "mysql2"
+gem "mysql2", "~> 0.4.4"
 gem "rack-flash3"
+gem 'activerecord'
